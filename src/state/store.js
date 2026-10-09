@@ -1,4 +1,6 @@
 // src/state/store.js
+import { Consent } from './consent.js';
+
 const STORAGE_KEY = 'sqlsandbox_state';
 const DB_BLOB_KEY = 'sqlsandbox_dbs';
 
@@ -18,6 +20,8 @@ export const store = {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        // The saved theme is only honoured if the user allowed "Preferences" cookies.
+        if (!Consent.allowed('preferences')) delete parsed.theme;
         this.state = { ...this.state, ...parsed };
       }
     } catch (e) {
@@ -43,6 +47,7 @@ export const store = {
       const { databases, ...rest } = this.state;
       const meta = {
         ...rest,
+        theme: Consent.allowed('preferences') ? rest.theme : 'dark',
         databases: databases.map(({ dbBlob, ...d }) => d),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
@@ -61,4 +66,9 @@ export const store = {
     document.documentElement.setAttribute('data-theme', this.state.theme);
     this.save();
   },
-};   
+};
+
+// Re-save when the user changes their cookie choices so the theme is stored (or dropped) straight away.
+if (typeof window !== 'undefined') {
+  window.addEventListener('sqlsandbox:consent', () => store.save());
+}

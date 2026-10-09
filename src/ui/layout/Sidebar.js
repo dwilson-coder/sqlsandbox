@@ -1,6 +1,7 @@
 // src/ui/layout/Sidebar.js
 import { store } from '../../state/store.js';
-import { createDatabase, loadDatabase, deleteDatabase, getTables, getColumns, createTable, deleteTable } from '../../db/engine.js';
+import { createDatabase, loadDatabase, persistDatabase, deleteDatabase, getTables, getColumns, createTable, deleteTable } from '../../db/engine.js';
+import { escapeHtml } from '../../utils/helpers.js';
 
 const SQL_TYPES = ['INTEGER', 'TEXT', 'REAL', 'BLOB', 'NUMERIC', 'BOOLEAN', 'DATE', 'DATETIME'];
 
@@ -10,6 +11,9 @@ export const Sidebar = {
   mount(el) {
     this.el = el;
     this.render();
+
+    // Typing CREATE DATABASE / USE / CREATE TABLE / DROP … in the editor updates the tree.
+    window.addEventListener('sqlsandbox:changed', () => this.refresh());
 
     // Single click: action buttons only
     el.addEventListener('click', async (e) => {
@@ -80,7 +84,7 @@ export const Sidebar = {
       html += `
         <div class="tree-item db-item ${isActive ? 'active' : ''}" data-action="select-db" data-id="${db.id}" title="Double-click to open">
           <span class="tree-icon">${isActive ? '📂' : '📁'}</span>
-          <span class="tree-label">${db.name}</span>
+          <span class="tree-label">${escapeHtml(db.name)}</span>
           <span class="tree-actions">
             <button data-action="new-table" data-id="${db.id}" title="New Table" class="tree-btn">+</button>
             <button data-action="delete-db" data-id="${db.id}" title="Delete" class="tree-btn danger">✕</button>
@@ -92,11 +96,11 @@ export const Sidebar = {
         for (const table of store.state.tables) {
           const isTableActive = table === store.state.currentTable;
           html += `
-            <div class="tree-item table-item ${isTableActive ? 'active' : ''}" data-action="select-table" data-id="${table}" title="Double-click to select">
+            <div class="tree-item table-item ${isTableActive ? 'active' : ''}" data-action="select-table" data-id="${escapeHtml(table)}" title="Double-click to select">
               <span class="tree-icon">📋</span>
-              <span class="tree-label">${table}</span>
+              <span class="tree-label">${escapeHtml(table)}</span>
               <span class="tree-actions">
-                <button data-action="delete-table" data-id="${table}" title="Delete" class="tree-btn danger">✕</button>
+                <button data-action="delete-table" data-id="${escapeHtml(table)}" title="Delete" class="tree-btn danger">✕</button>
               </span>
             </div>
           `;
@@ -106,7 +110,7 @@ export const Sidebar = {
               html += `
                 <div class="tree-item column-item">
                   <span class="tree-icon">🔹</span>
-                  <span class="tree-label">${col.name} <span class="col-type">${col.type}</span></span>
+                  <span class="tree-label">${escapeHtml(col.name)} <span class="col-type">${escapeHtml(col.type)}</span></span>
                 </div>
               `;
             }
@@ -180,10 +184,9 @@ export const Sidebar = {
     const db = store.state.databases.find(d => d.id === store.state.currentDbId);
     if (!db) return;
 
-    loadDatabase(db).then(dbInstance => {
+    loadDatabase(db).then(async dbInstance => {
       deleteTable(dbInstance, tableName);
-      const blob = dbInstance.export();
-      db.dbBlob = btoa(String.fromCharCode(...new Uint8Array(blob)));
+      await persistDatabase(db, dbInstance);
       store.state.tables = getTables(dbInstance);
       store.state.currentTable = null;
       store.state.columns = [];
@@ -198,10 +201,18 @@ export const Sidebar = {
       if (db) {
         const dbInstance = await loadDatabase(db);
         store.state.tables = getTables(dbInstance);
+        if (store.state.currentTable && !store.state.tables.includes(store.state.currentTable)) {
+          store.state.currentTable = null;
+          store.state.columns = [];
+        }
         if (store.state.currentTable) {
           store.state.columns = getColumns(dbInstance, store.state.currentTable);
         }
       }
+    } else {
+      store.state.tables = [];
+      store.state.currentTable = null;
+      store.state.columns = [];
     }
     store.save();
     this.render();
@@ -268,7 +279,7 @@ export const Sidebar = {
     function renderFields() {
       fieldsList.innerHTML = fields.map((f, i) => `
         <div class="field-row" data-idx="${i}">
-          <input type="text" class="form-input field-name" placeholder="name" value="${f.name}" data-prop="name" />
+          <input type="text" class="form-input field-name" placeholder="name" value="${escapeHtml(f.name)}" data-prop="name" />
           <select class="form-select field-type" data-prop="type">
             ${SQL_TYPES.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
@@ -278,7 +289,7 @@ export const Sidebar = {
             <label class="chk"><input type="checkbox" data-prop="notNull" ${f.notNull ? 'checked' : ''} /> NN</label>
             <label class="chk"><input type="checkbox" data-prop="unique" ${f.unique ? 'checked' : ''} /> UQ</label>
           </div>
-          <input type="text" class="form-input field-default" placeholder="default" value="${f.defaultValue}" data-prop="defaultValue" />
+          <input type="text" class="form-input field-default" placeholder="default" value="${escapeHtml(f.defaultValue)}" data-prop="defaultValue" />
           <button class="btn-remove-field" data-remove="${i}" title="Remove">✕</button>
         </div>
       `).join('');
@@ -361,9 +372,8 @@ export const Sidebar = {
 
       try {
         const dbInstance = await loadDatabase(db);
-        dbInstance.run(`CREATE TABLE "${tableName}" (${colDefs.join(', ')})`);
-        const blob = dbInstance.export();
-        db.dbBlob = btoa(String.fromCharCode(...new Uint8Array(blob)));
+        dbInstance.run(`CREATE TABLE "${tableName.replace(/"/g, '""')}" (${colDefs.join(', ')})`);
+        await persistDatabase(db, dbInstance);
         store.state.tables = getTables(dbInstance);
         store.save();
         overlay.remove();

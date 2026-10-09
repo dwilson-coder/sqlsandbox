@@ -2,6 +2,8 @@
 
 A responsive, browser-based learning system for anyone who wants to learn SQL. No installation, no server — everything runs in your browser using WebAssembly.
 
+![SQL Sandbox screenshot](https://raw.githubusercontent.com/dwilson-coder/sqlsandbox/refs/heads/main/og.jpg)
+
 ## Features
 
 - 🗄️ Create, select, and delete databases (SQLite via WebAssembly)

@@ -1,5 +1,5 @@
 // src/db/sample-datasets.js
-import { createDatabase, loadDatabase, getTables } from './engine.js';
+import { createDatabase, loadDatabase, persistDatabase, getTables } from './engine.js';
 import { store } from '../state/store.js';
 
 export async function loadSampleData() {
@@ -38,9 +38,7 @@ export async function loadSampleData() {
     INSERT INTO projects VALUES (3, 'Q4 Campaign', 2, 'completed');
   `);
 
-  const blob = dbInstance.export();
-  db.dbBlob = btoa(String.fromCharCode(...new Uint8Array(blob)));
-  store.save();
+  await persistDatabase(db, dbInstance);
 
   store.state.currentDbId = db.id;
   store.state.tables = getTables(dbInstance);
@@ -81,9 +79,7 @@ export async function loadPetsDatabase() {
     INSERT INTO animals VALUES (8, 'Daisy', 'Rabbit', 'Holland Lop', 2, 2.3, '2024-08-01');
   `);
 
-  const blob = dbInstance.export();
-  db.dbBlob = btoa(String.fromCharCode(...new Uint8Array(blob)));
-  store.save();
+  await persistDatabase(db, dbInstance);
 
   store.state.currentDbId = db.id;
   store.state.tables = getTables(dbInstance);
