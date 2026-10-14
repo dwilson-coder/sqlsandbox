@@ -62,11 +62,19 @@ export async function open() {
             <span class="toolbar-sep">|</span>
             <label class="diagram-checkbox-label" title="Show database node and connecting lines to all tables">
               <input type="checkbox" id="chk-connect-db" checked />
-              <span>Connect Database to Tables</span>
+              <span>Connect DB</span>
             </label>
-            <span class="diagram-tip">Auto-scales to window · Drag corner to resize</span>
+            <span class="toolbar-sep">|</span>
+            <label class="diagram-active-table-label" title="Highlight active table and its relationship lines">
+              <span class="active-dot" style="color: #f59e0b;">●</span>
+              <span>Active Table:</span>
+              <select id="select-active-table" class="diagram-table-select">
+                <option value="">(None)</option>
+              </select>
+            </label>
+            <span class="diagram-tip">Drag to pan · Scroll wheel to zoom · Click table to highlight</span>
           </div>
-          <div class="diagram-canvas-container" id="diagram-canvas-container">
+          <div class="diagram-canvas-container" id="diagram-canvas-container" title="Click and drag to move · Mouse wheel to zoom">
             <div id="diagram-render" class="diagram-render"></div>
           </div>
         </div>
@@ -100,12 +108,28 @@ export async function open() {
   const canvasContainer = overlay.querySelector('#diagram-canvas-container');
   const renderEl = overlay.querySelector('#diagram-render');
   const zoomIndicator = overlay.querySelector('#zoom-indicator');
+  const selectActiveTable = overlay.querySelector('#select-active-table');
+  const cardsContainer = overlay.querySelector('#cards-container');
 
-  // Dynamic Auto-fit scaling and zoom state
+  // Dynamic Auto-fit scaling, pan & zoom state
   let baseFitScale = 1;
   let userZoom = 1;
+  let panX = 0;
+  let panY = 0;
+  let isPanning = false;
+  let startPointerX = 0;
+  let startPointerY = 0;
+  let activeTable = store.state.currentTable || '';
 
-  function fitDiagramToWindow() {
+  function updateTransform() {
+    const effectiveScale = Number((baseFitScale * userZoom).toFixed(3));
+    renderEl.style.transform = `translate(${Math.round(panX)}px, ${Math.round(panY)}px) scale(${effectiveScale})`;
+    if (zoomIndicator) {
+      zoomIndicator.textContent = `${Math.round(effectiveScale * 100)}%`;
+    }
+  }
+
+  function fitDiagramToWindow(resetPan = false) {
     const svg = renderEl.querySelector('svg');
     if (!svg) return;
 
@@ -152,22 +176,76 @@ export async function open() {
       const scaleX = availW / vbW;
       const scaleY = availH / vbH;
       baseFitScale = Math.min(scaleX, scaleY);
-      // Keep sensible bounds
       baseFitScale = Math.max(0.15, Math.min(baseFitScale, 2.8));
-      applyZoom(0);
+
+      if (resetPan) {
+        panX = 0;
+        panY = 0;
+      }
+      updateTransform();
     }
   }
 
-  function applyZoom(delta = 0) {
-    if (delta !== 0) {
-      userZoom = Math.min(Math.max(0.2, userZoom + delta), 4.0);
-    }
-    const effectiveScale = Number((baseFitScale * userZoom).toFixed(3));
-    renderEl.style.transform = `scale(${effectiveScale})`;
-    if (zoomIndicator) {
-      zoomIndicator.textContent = `${Math.round(effectiveScale * 100)}%`;
+  // Mouse wheel to zoom in and out centered on pointer position
+  function handleWheel(e) {
+    e.preventDefault();
+    const svg = renderEl.querySelector('svg');
+    if (!svg) return;
+
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+    const oldScale = baseFitScale * userZoom;
+    const nextUserZoom = Math.min(Math.max(0.15, userZoom * zoomFactor), 5.0);
+    const newScale = baseFitScale * nextUserZoom;
+
+    // Center zoom towards mouse cursor position
+    const rect = canvasContainer.getBoundingClientRect();
+    const mouseX = e.clientX - (rect.left + rect.width / 2);
+    const mouseY = e.clientY - (rect.top + rect.height / 2);
+
+    const scaleRatio = newScale / oldScale;
+    panX = mouseX - (mouseX - panX) * scaleRatio;
+    panY = mouseY - (mouseY - panY) * scaleRatio;
+    userZoom = nextUserZoom;
+
+    updateTransform();
+  }
+
+  canvasContainer.addEventListener('wheel', handleWheel, { passive: false });
+
+  // Click & drag anywhere inside diagram window to pan/move schema
+  canvasContainer.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return; // Only primary left-click or touch
+    if (e.target.closest('button, input, select, label')) return;
+
+    isPanning = true;
+    startPointerX = e.clientX - panX;
+    startPointerY = e.clientY - panY;
+
+    canvasContainer.classList.add('is-panning');
+    try {
+      canvasContainer.setPointerCapture(e.pointerId);
+    } catch {}
+  });
+
+  canvasContainer.addEventListener('pointermove', (e) => {
+    if (!isPanning) return;
+    panX = e.clientX - startPointerX;
+    panY = e.clientY - startPointerY;
+    updateTransform();
+  });
+
+  function stopPanning(e) {
+    if (isPanning) {
+      isPanning = false;
+      canvasContainer.classList.remove('is-panning');
+      try {
+        if (e && e.pointerId) canvasContainer.releasePointerCapture(e.pointerId);
+      } catch {}
     }
   }
+
+  canvasContainer.addEventListener('pointerup', stopPanning);
+  canvasContainer.addEventListener('pointercancel', stopPanning);
 
   // Observe container dimension changes to auto-adjust diagram size
   const resizeObserver = new ResizeObserver(() => {
@@ -177,6 +255,7 @@ export async function open() {
 
   function close() {
     if (openOverlay) {
+      canvasContainer.removeEventListener('wheel', handleWheel);
       resizeObserver.disconnect();
       document.removeEventListener('keydown', handleKey);
       openOverlay.remove();
@@ -217,7 +296,7 @@ export async function open() {
       maxBtn.textContent = '⛶';
       maxBtn.title = 'Maximize Window';
     }
-    requestAnimationFrame(fitDiagramToWindow);
+    requestAnimationFrame(() => fitDiagramToWindow(false));
   });
 
   // Drag-to-resize handle logic
@@ -237,12 +316,11 @@ export async function open() {
     function onPointerMove(moveEvent) {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
-      // Since modal is centered in viewport, expand symmetrically with pointer
       const newWidth = Math.min(Math.max(480, Math.round(startWidth + dx * 2)), window.innerWidth - 24);
       const newHeight = Math.min(Math.max(360, Math.round(startHeight + dy * 2)), window.innerHeight - 24);
       modal.style.width = `${newWidth}px`;
       modal.style.height = `${newHeight}px`;
-      fitDiagramToWindow();
+      fitDiagramToWindow(false);
     }
 
     function onPointerUp() {
@@ -250,7 +328,7 @@ export async function open() {
       resizeHandle.removeEventListener('pointermove', onPointerMove);
       resizeHandle.removeEventListener('pointerup', onPointerUp);
       try { resizeHandle.releasePointerCapture(e.pointerId); } catch {}
-      fitDiagramToWindow();
+      fitDiagramToWindow(false);
     }
 
     resizeHandle.addEventListener('pointermove', onPointerMove);
@@ -274,17 +352,25 @@ export async function open() {
       overlay.querySelector('#tab-code').style.display = targetTab === 'code' ? 'block' : 'none';
 
       if (targetTab === 'visual') {
-        requestAnimationFrame(fitDiagramToWindow);
+        requestAnimationFrame(() => fitDiagramToWindow(false));
       }
     });
   });
 
   // Zoom button controls
-  overlay.querySelector('#btn-zoom-in').addEventListener('click', () => applyZoom(0.15));
-  overlay.querySelector('#btn-zoom-out').addEventListener('click', () => applyZoom(-0.15));
+  overlay.querySelector('#btn-zoom-in').addEventListener('click', () => {
+    userZoom = Math.min(userZoom * 1.2, 5.0);
+    updateTransform();
+  });
+  overlay.querySelector('#btn-zoom-out').addEventListener('click', () => {
+    userZoom = Math.max(userZoom * 0.8, 0.15);
+    updateTransform();
+  });
   overlay.querySelector('#btn-zoom-reset').addEventListener('click', () => {
     userZoom = 1;
-    fitDiagramToWindow();
+    panX = 0;
+    panY = 0;
+    fitDiagramToWindow(true);
   });
 
   // Extract schema and render
@@ -305,6 +391,28 @@ export async function open() {
       return;
     }
 
+    const tableNames = schema.tables.map(t => t.name);
+
+    // If currentTable in store is not among tables, fallback
+    if (activeTable && !tableNames.includes(activeTable)) {
+      activeTable = '';
+    }
+
+    // Populate active table dropdown in toolbar
+    if (selectActiveTable) {
+      selectActiveTable.innerHTML = `<option value="">(None)</option>` +
+        tableNames.map(name => `
+          <option value="${escapeHtml(name)}" ${name === activeTable ? 'selected' : ''}>
+            ${escapeHtml(name)}
+          </option>
+        `).join('');
+
+      selectActiveTable.addEventListener('change', (e) => {
+        activeTable = e.target.value;
+        applyActiveTableHighlight();
+      });
+    }
+
     // Update stats
     const statsEl = overlay.querySelector('#diagram-stats');
     statsEl.textContent = `${schema.tables.length} table${schema.tables.length === 1 ? '' : 's'} · ${schema.relationships.length} relationship${schema.relationships.length === 1 ? '' : 's'}`;
@@ -314,6 +422,39 @@ export async function open() {
     const chkConnectDb = overlay.querySelector('#chk-connect-db');
 
     let currentMermaidCode = '';
+
+    function applyActiveTableHighlight() {
+      const svg = renderEl.querySelector('svg');
+      if (svg) {
+        highlightActiveTableEdges(svg, activeTable, tableNames);
+      }
+      updateTableCardsHighlight(activeTable);
+    }
+
+    // Click anywhere on an entity in the visual diagram to set active table
+    renderEl.addEventListener('click', (e) => {
+      const node = e.target.closest('.node, [id*="entity"], [id*="node-"]');
+      if (!node) return;
+      const text = node.textContent?.toLowerCase() || '';
+      const matchedTable = schema.tables.find(t => text.includes(t.name.toLowerCase()));
+      if (matchedTable) {
+        activeTable = matchedTable.name === activeTable ? '' : matchedTable.name;
+        if (selectActiveTable) selectActiveTable.value = activeTable;
+        applyActiveTableHighlight();
+      }
+    });
+
+    // Click a table card to set active table
+    cardsContainer.addEventListener('click', (e) => {
+      const card = e.target.closest('.schema-card');
+      if (!card) return;
+      const tableName = card.dataset.tableName;
+      if (tableName) {
+        activeTable = tableName === activeTable ? '' : tableName;
+        if (selectActiveTable) selectActiveTable.value = activeTable;
+        applyActiveTableHighlight();
+      }
+    });
 
     async function renderMermaid() {
       const connectDatabase = chkConnectDb ? chkConnectDb.checked : true;
@@ -340,8 +481,12 @@ export async function open() {
         const uniqueId = `mermaid-er-${Date.now()}`;
         const { svg } = await mermaid.render(uniqueId, currentMermaidCode);
         renderEl.innerHTML = svg;
-        // Automatically resize diagram to fit the window
-        requestAnimationFrame(fitDiagramToWindow);
+
+        // Apply active table line highlights
+        applyActiveTableHighlight();
+
+        // Automatically resize diagram to fit the window and reset pan
+        requestAnimationFrame(() => fitDiagramToWindow(true));
       } catch (err) {
         console.warn('Failed to render Mermaid SVG:', err);
         renderEl.innerHTML = `
@@ -371,7 +516,8 @@ export async function open() {
     });
 
     // Populate Table Cards
-    renderTableCards(overlay.querySelector('#cards-container'), schema, dbName);
+    renderTableCards(cardsContainer, schema, dbName);
+    updateTableCardsHighlight(activeTable);
 
     // Initial render
     await renderMermaid();
@@ -379,6 +525,144 @@ export async function open() {
     console.error('Error extracting schema diagram:', err);
     showEmptyState(overlay, `Failed to load database schema: ${err.message}`);
   }
+}
+
+/**
+ * Checks if a Mermaid edge ID belongs to relationships connected to targetTable.
+ */
+function isEdgeConnectedToTable(edgeId, targetTable, allTables) {
+  if (!edgeId || !targetTable) return false;
+  const clean = edgeId
+    .replace(/^[a-zA-Z0-9_\-]+-id_/, '')
+    .replace(/^id_/, '')
+    .replace(/_\d+$/, '')
+    .toLowerCase();
+
+  const target = targetTable.toLowerCase();
+  const allTargets = [...allTables, 'database'].map(t => t.toLowerCase());
+
+  for (const t of allTargets) {
+    // Check if target matches from or to entity
+    if (clean.startsWith(`${target}_`) || clean.endsWith(`_${target}`)) {
+      return true;
+    }
+  }
+
+  return clean.includes(target);
+}
+
+/**
+ * Applies different colored lines (vivid Amber #f59e0b) to all edges connected to the active table.
+ */
+function highlightActiveTableEdges(svg, activeTableName, knownTables) {
+  if (!svg) return;
+
+  // Clear previous highlighted lines
+  svg.querySelectorAll('.active-table-edge').forEach(path => {
+    path.classList.remove('active-table-edge');
+    path.style.removeProperty('stroke');
+    path.style.removeProperty('stroke-width');
+    path.style.removeProperty('filter');
+    if (path.dataset.origMarkerStart) {
+      path.setAttribute('marker-start', path.dataset.origMarkerStart);
+    }
+    if (path.dataset.origMarkerEnd) {
+      path.setAttribute('marker-end', path.dataset.origMarkerEnd);
+    }
+  });
+
+  // Clear previous highlighted nodes
+  svg.querySelectorAll('.active-table-node').forEach(node => {
+    node.classList.remove('active-table-node');
+    const shapes = node.querySelectorAll('rect, polygon, circle');
+    shapes.forEach(shape => {
+      shape.style.removeProperty('stroke');
+      shape.style.removeProperty('stroke-width');
+    });
+  });
+
+  if (!activeTableName) return;
+
+  const target = activeTableName.toLowerCase();
+  const activeColor = '#f59e0b'; // Amber / Gold highlight color
+
+  // 1. Highlight connected relationship lines
+  const edgePaths = svg.querySelectorAll('path[data-id], path.relationshipLine, .edgePaths path');
+  edgePaths.forEach(path => {
+    const edgeId = path.getAttribute('data-id') || path.id || '';
+    if (isEdgeConnectedToTable(edgeId, target, knownTables)) {
+      path.classList.add('active-table-edge');
+      path.style.setProperty('stroke', activeColor, 'important');
+      path.style.setProperty('stroke-width', '2.8px', 'important');
+      path.style.setProperty('filter', 'drop-shadow(0 0 3px rgba(245, 158, 11, 0.6))', 'important');
+
+      // Update markers (crow's foot, arrows, circles) to match line color
+      ['marker-start', 'marker-end'].forEach(attr => {
+        const val = path.getAttribute(attr);
+        if (!val) return;
+        const markerMatch = val.match(/#([a-zA-Z0-9_\-]+)/);
+        if (!markerMatch) return;
+        const origMarkerId = markerMatch[1];
+        if (origMarkerId.endsWith('_active')) return;
+
+        const activeMarkerId = `${origMarkerId}_active`;
+        let activeMarker = svg.querySelector(`#${CSS.escape(activeMarkerId)}`);
+        if (!activeMarker) {
+          const origMarker = svg.querySelector(`#${CSS.escape(origMarkerId)}`);
+          if (origMarker) {
+            activeMarker = origMarker.cloneNode(true);
+            activeMarker.id = activeMarkerId;
+            activeMarker.querySelectorAll('path, circle, line').forEach(shape => {
+              shape.setAttribute('stroke', activeColor);
+              if (shape.getAttribute('fill') && shape.getAttribute('fill') !== 'none') {
+                shape.setAttribute('fill', activeColor);
+              }
+            });
+            origMarker.parentNode?.appendChild(activeMarker);
+          }
+        }
+        if (activeMarker) {
+          if (attr === 'marker-start' && !path.dataset.origMarkerStart) path.dataset.origMarkerStart = val;
+          if (attr === 'marker-end' && !path.dataset.origMarkerEnd) path.dataset.origMarkerEnd = val;
+          path.setAttribute(attr, `url(#${activeMarkerId})`);
+        }
+      });
+    }
+  });
+
+  // 2. Highlight active table entity node in SVG
+  const allNodes = svg.querySelectorAll('.node, [id*="entity"], [id*="node-"]');
+  allNodes.forEach(node => {
+    const text = node.textContent?.toLowerCase() || '';
+    const id = (node.id || '').toLowerCase();
+    if (id.includes(target) || text.includes(target)) {
+      node.classList.add('active-table-node');
+      const shapes = node.querySelectorAll('rect, polygon');
+      shapes.forEach(shape => {
+        shape.style.setProperty('stroke', activeColor, 'important');
+        shape.style.setProperty('stroke-width', '2px', 'important');
+      });
+    }
+  });
+}
+
+function updateTableCardsHighlight(activeTableName) {
+  const cards = document.querySelectorAll('.schema-card');
+  cards.forEach(card => {
+    const isCurrent = card.dataset.tableName?.toLowerCase() === activeTableName?.toLowerCase();
+    card.classList.toggle('is-active-table', isCurrent);
+
+    const badgesContainer = card.querySelector('.schema-card-badges');
+    let badge = card.querySelector('.badge.active-indicator');
+    if (isCurrent && !badge && badgesContainer) {
+      const span = document.createElement('span');
+      span.className = 'badge active-indicator';
+      span.textContent = 'Active';
+      badgesContainer.prepend(span);
+    } else if (!isCurrent && badge) {
+      badge.remove();
+    }
+  });
 }
 
 function showEmptyState(overlay, customMessage) {
@@ -412,7 +696,7 @@ function renderTableCards(container, schema, dbName) {
   `;
 
   const tablesHtml = schema.tables.map(table => `
-    <div class="schema-card">
+    <div class="schema-card" data-table-name="${escapeHtml(table.name)}">
       <div class="schema-card-header">
         <div class="schema-card-title">
           <span class="table-icon">📋</span>

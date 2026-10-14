@@ -80,3 +80,24 @@ test('extractSchema and generateMermaidDiagram with SQLite tables', async () => 
   assert.ok(mermaidNoDb.includes('departments ||--o{ employees : "department_id"'));
 });
 
+test('getTableDdl extracts individual table and full database DDL', async () => {
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  db.run(`
+    CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT NOT NULL);
+    CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+  `);
+
+  const singleDdl = getTableDdl(db, 'books');
+  assert.ok(singleDdl.includes('CREATE TABLE books'));
+  assert.ok(singleDdl.endsWith(';'));
+
+  const fullDdl = getTableDdl(db, null);
+  assert.ok(fullDdl.includes('CREATE TABLE books'));
+  assert.ok(fullDdl.includes('CREATE TABLE authors'));
+
+  const notFound = getTableDdl(db, 'missing_table');
+  assert.ok(notFound.includes('not found'));
+});
+
+

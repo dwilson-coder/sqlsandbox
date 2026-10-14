@@ -155,6 +155,7 @@ export const Sidebar = {
     }
     store.save();
     this.render();
+    window.dispatchEvent(new CustomEvent('sqlsandbox:activeTableChanged', { detail: { tableName } }));
   },
 
   async promptNewDatabase() {

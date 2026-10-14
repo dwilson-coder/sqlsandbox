@@ -230,3 +230,37 @@ export function generateMermaidDiagram(schema, options = {}) {
   return lines.join('\n');
 }
 
+/**
+ * Retrieve SQL DDL statement(s) for a specific table or the whole database.
+ * @param {object} dbInstance - sql.js Database instance
+ * @param {string|null} tableName - Table name, or null/empty for all tables in the database
+ * @returns {string} Raw SQL DDL
+ */
+export function getTableDdl(dbInstance, tableName = null) {
+  if (!dbInstance) return '-- No active database connection';
+
+  try {
+    if (tableName && tableName.toUpperCase() !== 'DATABASE') {
+      const escaped = String(tableName).replace(/'/g, "''");
+      const res = dbInstance.exec(`SELECT sql FROM sqlite_master WHERE type='table' AND name='${escaped}'`);
+      if (res.length && res[0].values.length && res[0].values[0][0]) {
+        return res[0].values[0][0].trim() + ';';
+      }
+      return `-- Table "${tableName}" not found.`;
+    } else {
+      // Entire database
+      const res = dbInstance.exec(`SELECT sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`);
+      if (res.length && res[0].values.length) {
+        return res[0].values
+          .map(row => (row[0] || '').trim() + ';')
+          .filter(Boolean)
+          .join('\n\n');
+      }
+      return '-- No tables found in database.';
+    }
+  } catch (err) {
+    return `-- Error retrieving DDL: ${err.message}`;
+  }
+}
+
+
