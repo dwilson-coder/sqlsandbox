@@ -393,3 +393,266 @@ body {
 .legal-table th, .legal-table td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
 .legal-table th { background: var(--panel-header-bg); }
 
+/* === SQL DIAGRAM MODAL === */
+.diagram-modal {
+  position: relative;
+  width: 1000px; max-width: 96vw; height: 86vh;
+  min-width: 480px; min-height: 360px; max-height: 96vh;
+  display: flex; flex-direction: column;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 16px 50px rgba(0,0,0,0.6);
+  overflow: hidden;
+  resize: both;
+}
+
+.diagram-modal.is-maximized {
+  width: 98vw !important;
+  height: 96vh !important;
+  max-width: 98vw !important;
+  max-height: 96vh !important;
+  border-radius: 4px;
+  resize: none;
+}
+
+/* Diagram Modal Scrollbars - matching blue button color (--accent) */
+.diagram-modal,
+.diagram-modal * {
+  scrollbar-color: var(--accent) transparent;
+  scrollbar-width: thin;
+}
+.diagram-modal ::-webkit-scrollbar,
+.diagram-modal::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.diagram-modal ::-webkit-scrollbar-track,
+.diagram-modal::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+[data-theme="dark"] .diagram-modal ::-webkit-scrollbar-track,
+[data-theme="dark"] .diagram-modal::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+.diagram-modal ::-webkit-scrollbar-thumb,
+.diagram-modal::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+.diagram-modal ::-webkit-scrollbar-thumb:hover,
+.diagram-modal::-webkit-scrollbar-thumb:hover {
+  background: #1f8ad2;
+}
+.diagram-modal ::-webkit-scrollbar-corner,
+.diagram-modal::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.diagram-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  z-index: 25;
+  background: linear-gradient(135deg, transparent 50%, var(--text-muted) 50%, var(--text-muted) 62%, transparent 62%, transparent 75%, var(--text-muted) 75%, var(--text-muted) 87%, transparent 87%);
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.diagram-resize-handle:hover {
+  opacity: 1;
+  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%, var(--accent) 62%, transparent 62%, transparent 75%, var(--accent) 75%, var(--accent) 87%, transparent 87%);
+}
+.diagram-modal.is-maximized .diagram-resize-handle {
+  display: none;
+}
+
+.diagram-header-title {
+  display: flex; align-items: center; gap: 10px;
+}
+.diagram-icon { font-size: 20px; }
+.diagram-header-title h3 { font-size: 15px; font-weight: 600; margin: 0; line-height: 1.2; }
+.diagram-db-sub { font-size: 11px; color: var(--accent); font-weight: 500; }
+
+.diagram-tabs {
+  display: flex; gap: 4px; background: var(--panel-header-bg);
+  padding: 3px; border-radius: 6px; border: 1px solid var(--border);
+}
+.diagram-tab {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 4px;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.diagram-tab:hover { color: var(--text); }
+.diagram-tab.active {
+  background: var(--accent); color: #fff; font-weight: 600;
+}
+
+.diagram-header-actions {
+  display: flex; align-items: center; gap: 10px;
+}
+.diagram-btn {
+  background: var(--panel-header-bg); border: 1px solid var(--border);
+  color: var(--text); padding: 5px 10px; font-size: 12px; border-radius: 4px;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.diagram-btn:hover {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+
+.diagram-modal-body {
+  flex: 1; overflow: hidden; display: flex; flex-direction: column;
+  padding: 0; position: relative; background: var(--bg);
+}
+
+.diagram-toolbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px; background: var(--panel-header-bg);
+  border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.diagram-zoom-label { color: var(--text-muted); font-size: 11px; font-weight: 600; }
+.zoom-btn {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 12px;
+}
+.zoom-btn:hover { background: var(--accent); color: #fff; }
+.diagram-zoom-val {
+  font-size: 11px; color: var(--text-muted); min-width: 38px;
+  text-align: center; font-family: monospace; font-weight: 600;
+}
+.toolbar-sep { color: var(--border); margin: 0 4px; }
+.diagram-checkbox-label {
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: var(--text); cursor: pointer; user-select: none;
+  background: var(--bg); border: 1px solid var(--border);
+  padding: 3px 8px; border-radius: 4px; transition: border-color 0.15s;
+}
+.diagram-checkbox-label:hover { border-color: var(--accent); }
+.diagram-checkbox-label input { cursor: pointer; margin: 0; }
+.diagram-tip { margin-left: auto; color: var(--text-muted); font-size: 11px; }
+
+.diagram-canvas-container {
+  flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.08); padding: 24px; position: relative;
+}
+[data-theme="dark"] .diagram-canvas-container {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.diagram-render {
+  transform-origin: center center;
+  transition: transform 0.08s ease-out;
+  display: flex; justify-content: center; align-items: center;
+}
+.diagram-modal.is-resizing .diagram-render {
+  transition: none !important;
+}
+.diagram-render svg {
+  max-width: none !important; height: auto;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+}
+
+.tab-pane {
+  flex: 1; width: 100%; height: 100%; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+
+/* Loading & Empty States */
+.diagram-loading, .diagram-empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  background: var(--bg); z-index: 10;
+}
+.diagram-spinner {
+  width: 32px; height: 32px; border: 3px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.diagram-empty .empty-icon { font-size: 36px; margin: 0; }
+.diagram-empty h4 { font-size: 16px; margin: 0; }
+.diagram-empty .empty-desc { color: var(--text-muted); font-size: 13px; max-width: 340px; text-align: center; }
+
+/* Schema Cards (Supabase-style) */
+.schema-cards-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px; padding: 18px; overflow-y: auto; height: 100%;
+}
+.schema-db-card {
+  grid-column: 1 / -1;
+  background: rgba(0, 122, 204, 0.08); border: 1px solid var(--accent);
+  border-radius: 6px; padding: 10px 14px;
+}
+.schema-db-card-header {
+  display: flex; align-items: center; gap: 10px;
+}
+.schema-db-card .db-icon { font-size: 22px; }
+.schema-db-card h4 { font-size: 13px; margin: 0; color: var(--accent); font-weight: 600; }
+.schema-db-card .db-meta { font-size: 11px; color: var(--text-muted); }
+
+.schema-card {
+  background: var(--bg-sidebar); border: 1px solid var(--border);
+  border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.schema-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--panel-header-bg);
+  border-bottom: 1px solid var(--border);
+}
+.schema-card-title {
+  display: flex; align-items: center; gap: 6px; font-size: 13px;
+}
+.schema-card-badges { display: flex; gap: 6px; }
+.badge {
+  font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600;
+}
+.badge.junction { background: rgba(186, 104, 200, 0.2); color: #ba68c8; border: 1px solid #ba68c8; }
+.badge.count { background: var(--border); color: var(--text-muted); }
+
+.schema-card-columns { padding: 4px 0; }
+.schema-col-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 14px; font-size: 12px; border-bottom: 1px solid rgba(128,128,128,0.1);
+}
+.schema-col-row:last-child { border-bottom: none; }
+.schema-col-row.is-pk { font-weight: 600; }
+.col-name-group { display: flex; align-items: center; gap: 6px; }
+.col-key-icon { display: inline-flex; gap: 3px; }
+.badge-pk {
+  background: #f1c40f; color: #1e1e1e; font-size: 9px; font-weight: 800;
+  padding: 1px 4px; border-radius: 3px;
+}
+.badge-fk {
+  background: #3498db; color: #fff; font-size: 9px; font-weight: 800;
+  padding: 1px 4px; border-radius: 3px;
+}
+.badge-uk {
+  background: #9b59b6; color: #fff; font-size: 9px; font-weight: 800;
+  padding: 1px 4px; border-radius: 3px;
+}
+.col-name { font-family: monospace; font-size: 12px; }
+.col-meta-group { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.col-meta-group .col-type { color: var(--text-muted); font-family: monospace; }
+.col-fk-ref { color: var(--accent); font-size: 10px; }
+
+/* Code View */
+.code-tab-header {
+  padding: 8px 16px; background: var(--panel-header-bg);
+  border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-muted);
+}
+.mermaid-code-block {
+  flex: 1; margin: 0; padding: 16px; overflow: auto;
+  font-family: 'Consolas', 'Monaco', monospace; font-size: 13px;
+  line-height: 1.5; color: #4ec9b0; background: var(--bg-sidebar);
+}
+.diagram-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 18px; border-top: 1px solid var(--border); background: var(--panel-header-bg);
+}
+.diagram-stats { font-size: 12px; color: var(--text-muted); }
+
+

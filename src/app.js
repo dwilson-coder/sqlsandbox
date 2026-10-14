@@ -21,6 +21,7 @@ export function createApp(root) {
               <button id="btn-run" title="Run Query (Ctrl+Enter)">⚡ Run</button>
               <button id="btn-format" title="Format SQL (Ctrl+K)">✨ Format</button>
               <button id="btn-palette" title="Command Search (Ctrl+Shift+P)">🔍 Commands</button>
+              <button id="btn-diagram" title="View SQL Schema Diagram">📊 Diagram</button>
               <button id="btn-theme" title="Toggle Theme">🌙</button>
             </div>
           </header>
@@ -87,6 +88,9 @@ export function createApp(root) {
       document.getElementById('btn-clear-output').addEventListener('click', () => Output.clear());
       document.getElementById('btn-palette').addEventListener('click', () => {
         import('./ui/components/CommandPalette.js').then(m => m.open());
+      });
+      document.getElementById('btn-diagram').addEventListener('click', () => {
+        import('./ui/modals/SqlDiagram.js').then(m => m.open());
       });
       document.getElementById('btn-theme').addEventListener('click', () => {
         store.toggleTheme();
