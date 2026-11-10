@@ -3,6 +3,7 @@ import { Consent } from './consent.js';
 
 const STORAGE_KEY = 'sqlsandbox_state';
 const DB_BLOB_KEY = 'sqlsandbox_dbs';
+const DEFAULT_LAYOUT = { orientation: 'vertical', editorFirst: false };
 
 export const store = {
   state: {
@@ -12,6 +13,8 @@ export const store = {
     tables: [],
     columns: [],
     theme: 'dark',
+    // Panel layout: 'vertical' = stacked, 'horizontal' = side by side; editorFirst swaps the panels.
+    layout: { orientation: 'vertical', editorFirst: false },
     queryHistory: [],
   },
 
@@ -21,8 +24,9 @@ export const store = {
       if (saved) {
         const parsed = JSON.parse(saved);
         // The saved theme is only honoured if the user allowed "Preferences" cookies.
-        if (!Consent.allowed('preferences')) delete parsed.theme;
+        if (!Consent.allowed('preferences')) { delete parsed.theme; delete parsed.layout; }
         this.state = { ...this.state, ...parsed };
+        this.state.layout = { ...DEFAULT_LAYOUT, ...(parsed.layout || {}) };
       }
     } catch (e) {
       console.warn('Failed to restore state:', e);
@@ -48,6 +52,7 @@ export const store = {
       const meta = {
         ...rest,
         theme: Consent.allowed('preferences') ? rest.theme : 'dark',
+        layout: Consent.allowed('preferences') ? rest.layout : DEFAULT_LAYOUT,
         databases: databases.map(({ dbBlob, ...d }) => d),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
@@ -62,9 +67,23 @@ export const store = {
   },
 
   toggleTheme() {
-    this.state.theme = this.state.theme === 'dark' ? 'light' : 'dark';
+    this.setTheme(this.state.theme === 'dark' ? 'light' : 'dark');
+  },
+
+  setTheme(theme) {
+    this.state.theme = theme === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', this.state.theme);
     this.save();
+    window.dispatchEvent(new CustomEvent('sqlsandbox:theme', { detail: { theme: this.state.theme } }));
+  },
+
+  setLayout(changes) {
+    const next = { ...DEFAULT_LAYOUT, ...this.state.layout, ...changes };
+    if (next.orientation !== 'horizontal') next.orientation = 'vertical';
+    next.editorFirst = !!next.editorFirst;
+    this.state.layout = next;
+    this.save();
+    window.dispatchEvent(new CustomEvent('sqlsandbox:layout', { detail: next }));
   },
 };
 

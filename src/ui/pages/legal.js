@@ -29,7 +29,7 @@ const PAGES = {
         <thead><tr><th>Name</th><th>Purpose</th><th>Category</th></tr></thead>
         <tbody>
           <tr><td><code>sqlsandbox_dbs</code></td><td>Your databases and tables (the saved SQLite files)</td><td>Essential</td></tr>
-          <tr><td><code>sqlsandbox_state</code></td><td>Which database/table is selected; your theme (only if you allow Preferences)</td><td>Essential / Preferences</td></tr>
+          <tr><td><code>sqlsandbox_state</code></td><td>Which database/table is selected; your theme and panel layout (only if you allow Preferences)</td><td>Essential / Preferences</td></tr>
           <tr><td><code>sqlsandbox_consent</code></td><td>Your cookie choices, so we don't ask every visit</td><td>Essential</td></tr>
         </tbody>
       </table>

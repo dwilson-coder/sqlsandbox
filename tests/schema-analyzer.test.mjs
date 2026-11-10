@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import initSqlJs from 'sql.js';
-import { extractSchema, generateMermaidDiagram, sanitizeIdent } from '../src/db/schema-analyzer.js';
+import { extractSchema, generateMermaidDiagram, sanitizeIdent, getTableDdl } from '../src/db/schema-analyzer.js';
 
 test('sanitizeIdent cleans identifier for Mermaid', () => {
   assert.equal(sanitizeIdent('users'), 'users');

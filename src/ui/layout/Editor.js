@@ -1,4 +1,4 @@
-import { EditorState, Prec } from '@codemirror/state';
+import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { sql, SQLite } from '@codemirror/lang-sql';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -8,6 +8,9 @@ import { store } from '../../state/store.js';
 import { Output } from './Output.js';
 
 let editorView = null;
+// Theme lives in a compartment so switching it keeps the undo history and cursor.
+const themeCompartment = new Compartment();
+const currentTheme = () => (store.state.theme === 'dark' ? vscodeDark : vscodeLight);
 
 function buildExtensions(theme) {
   return [
@@ -23,7 +26,7 @@ function buildExtensions(theme) {
       { key: 'Mod-k', run: () => { Editor.format(); return true; } },
     ]),
     highlightSelectionMatches(),
-    theme,
+    themeCompartment.of(theme),
     EditorView.lineWrapping,
     EditorView.theme({
       '&': { height: '100%' },
@@ -34,7 +37,7 @@ function buildExtensions(theme) {
 
 export const Editor = {
   mount(el) {
-    const theme = store.state.theme === 'dark' ? vscodeDark : vscodeLight;
+    const theme = currentTheme();
 
     const state = EditorState.create({
       doc: '-- Welcome to SQL Sandbox\n-- Type a query below and press Ctrl+Enter to run\n\nSELECT 1 AS hello;',
@@ -43,6 +46,16 @@ export const Editor = {
 
     editorView = new EditorView({ state, parent: el });
     this.view = editorView;
+
+    // Follow theme changes from the header toggle or the Settings window
+    window.addEventListener('sqlsandbox:theme', () => this.setTheme());
+  },
+
+  /** Empty the editor (undoable with Ctrl+Z). */
+  clear() {
+    if (!editorView) return;
+    editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: '' } });
+    editorView.focus();
   },
 
   run() {
@@ -69,12 +82,7 @@ export const Editor = {
 
   setTheme() {
     if (!editorView) return;
-    const theme = store.state.theme === 'dark' ? vscodeDark : vscodeLight;
-    const newState = EditorState.create({
-      doc: editorView.state.doc.toString(),
-      extensions: buildExtensions(theme),
-    });
-    editorView.setState(newState);
+    editorView.dispatch({ effects: themeCompartment.reconfigure(currentTheme()) });
   },
 
   insertText(text) {

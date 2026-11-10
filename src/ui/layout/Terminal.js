@@ -56,7 +56,7 @@ export const Terminal = {
   },
 
   print(msg, type = 'info') {
-    const colors = { query: 'var(--accent)', success: '#4ec9b0', error: '#f44747', info: 'var(--text)' };
+    const colors = { query: 'var(--link)', success: 'var(--success)', error: 'var(--error)', info: 'var(--text)' };
     const div = document.createElement('div');
     div.style.cssText = `padding:2px 0;color:${colors[type] || colors.info};white-space:pre-wrap;font-size:13px;`;
     div.textContent = msg;

@@ -1,4 +1,5 @@
 import { Consent, STORAGE_KEYS } from '../../state/consent.js';
+import { confirmDialog } from './Dialog.js';
 
 const CATEGORIES = [
   {
@@ -7,7 +8,7 @@ const CATEGORIES = [
   },
   {
     id: 'preferences', label: 'Preferences', locked: false,
-    text: 'Remembers your light / dark theme between visits.',
+    text: 'Remembers your theme (light / dark) and panel layout between visits.',
   },
   {
     id: 'analytics', label: 'Analytics', locked: false,
@@ -24,7 +25,7 @@ export function showBannerIfNeeded() {
   banner.setAttribute('role', 'region');
   banner.setAttribute('aria-label', 'Cookie preferences');
   banner.innerHTML = `
-    <p>SQL Sandbox saves your databases in this browser (essential). We'd also like to remember your theme.
+    <p>SQL Sandbox saves your databases in this browser (essential). We'd also like to remember your theme and layout.
        No ads, no tracking. <a href="#/privacy">Privacy Policy</a></p>
     <div class="cookie-buttons">
       <button type="button" class="btn-primary" data-consent="all">Accept all</button>
@@ -94,8 +95,8 @@ export function openSettings() {
     });
     done();
   });
-  overlay.querySelector('#btn-erase').addEventListener('click', () => {
-    if (confirm('Delete ALL databases and settings saved by SQL Sandbox in this browser? This cannot be undone.')) {
+  overlay.querySelector('#btn-erase').addEventListener('click', async () => {
+    if (await confirmDialog('Delete everything', 'Delete ALL databases and settings saved by SQL Sandbox in this browser? This cannot be undone.', { okText: 'Delete everything' })) {
       Consent.eraseEverything();
     }
   });

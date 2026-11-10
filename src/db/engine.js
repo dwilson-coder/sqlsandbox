@@ -31,6 +31,22 @@ export async function createDatabase(name) {
   return record;
 }
 
+/** Create a new database from the bytes of an existing SQLite file. */
+export async function createDatabaseFromBytes(name, bytes) {
+  const header = new TextDecoder().decode(bytes.slice(0, 15));
+  if (header !== 'SQLite format 3') throw new Error('This file is not a SQLite database.');
+  const { store } = await import('../state/store.js');
+  const SQL = await initEngine();
+  const db = new SQL.Database(bytes);
+  db.exec('PRAGMA schema_version'); // throws now if the file is corrupt
+  const id = crypto.randomUUID();
+  const record = { id, name, dbBlob: bytesToBase64(db.export()) };
+  connections.set(id, db);
+  store.state.databases.push(record);
+  store.save();
+  return record;
+}
+
 export async function loadDatabase(dbRecord) {
   if (connections.has(dbRecord.id)) return connections.get(dbRecord.id);
   const SQL = await initEngine();

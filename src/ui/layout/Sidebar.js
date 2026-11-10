@@ -2,6 +2,8 @@
 import { store } from '../../state/store.js';
 import { createDatabase, loadDatabase, persistDatabase, deleteDatabase, getTables, getColumns, createTable, deleteTable } from '../../db/engine.js';
 import { escapeHtml } from '../../utils/helpers.js';
+import { importFile, IMPORT_ACCEPT } from '../../db/import-data.js';
+import { promptDialog, confirmDialog, alertDialog } from '../components/Dialog.js';
 
 const SQL_TYPES = ['INTEGER', 'TEXT', 'REAL', 'BLOB', 'NUMERIC', 'BOOLEAN', 'DATE', 'DATETIME'];
 
@@ -42,7 +44,30 @@ export const Sidebar = {
         case 'load-sample':
           await this.loadSample();
           break;
+        case 'import-data':
+          el.querySelector('#import-file-input')?.click();
+          break;
       }
+    });
+
+    // File chosen from the Import Data picker (native dialog in both browser and Electron)
+    el.addEventListener('change', async (e) => {
+      if (e.target.id !== 'import-file-input') return;
+      const file = e.target.files?.[0];
+      e.target.value = ''; // allow re-importing the same file
+      if (file) await this.importData(file);
+    });
+
+    // Keyboard: Enter / Space on a focused database or table row selects it (same as double-click)
+    el.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const row = e.target.closest('.tree-item[data-action]');
+      if (!row || e.target !== row) return; // let buttons inside the row handle their own keys
+      e.preventDefault();
+      const { action, id } = row.dataset;
+      if (action === 'select-db') await this.selectDatabase(id);
+      else if (action === 'select-table') await this.selectTable(id);
+      this.el.querySelector(`.tree-item[data-action="${action}"][data-id="${CSS.escape(id)}"]`)?.focus();
     });
 
     // Double click: select database OR table
@@ -68,8 +93,8 @@ export const Sidebar = {
         <div class="sidebar-section-header">
           <span>📁 DATABASES</span>
           <div class="header-btns">
-            <button data-action="refresh" title="Refresh" class="sidebar-btn">⟳</button>
-            <button data-action="new-db" title="New Database" class="sidebar-btn">+</button>
+            <button data-action="refresh" title="Refresh" class="sidebar-btn sidebar-btn-text">Refresh</button>
+            <button data-action="new-db" title="Add New Database" class="sidebar-btn sidebar-btn-text">Add New Database</button>
           </div>
         </div>
         <div class="db-list">
@@ -82,7 +107,7 @@ export const Sidebar = {
     for (const db of dbs) {
       const isActive = db.id === store.state.currentDbId;
       html += `
-        <div class="tree-item db-item ${isActive ? 'active' : ''}" data-action="select-db" data-id="${db.id}" title="Double-click to open">
+        <div class="tree-item db-item ${isActive ? 'active' : ''}" data-action="select-db" data-id="${db.id}" title="Double-click (or Enter) to open" tabindex="0" role="button" aria-current="${isActive ? 'true' : 'false'}">
           <span class="tree-icon">${isActive ? '📂' : '📁'}</span>
           <span class="tree-label">${escapeHtml(db.name)}</span>
           <span class="tree-actions">
@@ -96,7 +121,7 @@ export const Sidebar = {
         for (const table of store.state.tables) {
           const isTableActive = table === store.state.currentTable;
           html += `
-            <div class="tree-item table-item ${isTableActive ? 'active' : ''}" data-action="select-table" data-id="${escapeHtml(table)}" title="Double-click to select">
+            <div class="tree-item table-item ${isTableActive ? 'active' : ''}" data-action="select-table" data-id="${escapeHtml(table)}" title="Double-click (or Enter) to select" tabindex="0" role="button" aria-current="${isTableActive ? 'true' : 'false'}">
               <span class="tree-icon">📋</span>
               <span class="tree-label">${escapeHtml(table)}</span>
               <span class="tree-actions">
@@ -123,6 +148,9 @@ export const Sidebar = {
         </div>
         <div class="sidebar-footer">
           <button data-action="load-sample" class="sidebar-link">📦 Load Sample Data</button>
+          <button data-action="import-data" class="sidebar-link" title="Import a .sqlite, .db, .sql or .csv file">📥 Import Data</button>
+          <input type="file" id="import-file-input" accept="${IMPORT_ACCEPT}" hidden />
+          <div class="sidebar-status" role="status" aria-live="polite"></div>
         </div>
       </div>
     `;
@@ -159,7 +187,7 @@ export const Sidebar = {
   },
 
   async promptNewDatabase() {
-    const name = prompt('Database name:');
+    const name = await promptDialog('🗄️ Add New Database', 'Database Name', { placeholder: 'e.g. my_store', okText: 'Create Database' });
     if (!name) return;
     try {
       await createDatabase(name);
@@ -168,25 +196,26 @@ export const Sidebar = {
       this.render();
     } catch (e) {
       console.error('Create DB failed:', e);
-      alert(`Failed to create database: ${e.message}`);
+      await alertDialog('Could not create database', e.message);
     }
   },
 
-  confirmDeleteDatabase(id) {
+  async confirmDeleteDatabase(id) {
     const db = store.state.databases.find(d => d.id === id);
     if (!db) return;
-    if (confirm(`Delete database "${db.name}"? This cannot be undone.`)) {
-      deleteDatabase(id);
+    if (await confirmDialog('Delete database', `Delete database "${db.name}"? This cannot be undone.`)) {
+      await deleteDatabase(id); // must finish before re-rendering, or the deleted DB stays listed
       this.render();
     }
   },
 
-  confirmDeleteTable(tableName) {
-    if (!confirm(`Delete table "${tableName}"?`)) return;
+  async confirmDeleteTable(tableName) {
+    if (!(await confirmDialog('Delete table', `Delete table "${tableName}"?`))) return;
     const db = store.state.databases.find(d => d.id === store.state.currentDbId);
     if (!db) return;
 
-    loadDatabase(db).then(async dbInstance => {
+    try {
+      const dbInstance = await loadDatabase(db);
       deleteTable(dbInstance, tableName);
       await persistDatabase(db, dbInstance);
       store.state.tables = getTables(dbInstance);
@@ -194,7 +223,9 @@ export const Sidebar = {
       store.state.columns = [];
       store.save();
       this.render();
-    });
+    } catch (e) {
+      await alertDialog('Could not delete table', e.message);
+    }
   },
 
   async refresh() {
@@ -225,6 +256,25 @@ export const Sidebar = {
     await loadSampleData();
     const last = store.state.databases[store.state.databases.length - 1];
     if (last) await this.selectDatabase(last.id);
+  },
+
+  async importData(file) {
+    this.setStatus(`Importing ${file.name}…`);
+    try {
+      const { dbId, message } = await importFile(file);
+      await this.selectDatabase(dbId);
+      this.setStatus(message);
+    } catch (e) {
+      console.error('Import failed:', e);
+      this.setStatus(`Import failed: ${e.message}`, true);
+    }
+  },
+
+  setStatus(text, isError = false) {
+    const status = this.el.querySelector('.sidebar-status');
+    if (!status) return;
+    status.textContent = text;
+    status.classList.toggle('error', isError);
   },
 
   // ─── TABLE CREATION MODAL ────────────────────────────────────────────
@@ -280,18 +330,18 @@ export const Sidebar = {
     function renderFields() {
       fieldsList.innerHTML = fields.map((f, i) => `
         <div class="field-row" data-idx="${i}">
-          <input type="text" class="form-input field-name" placeholder="name" value="${escapeHtml(f.name)}" data-prop="name" />
-          <select class="form-select field-type" data-prop="type">
+          <input type="text" class="form-input field-name" placeholder="name" aria-label="Column ${i + 1} name" value="${escapeHtml(f.name)}" data-prop="name" />
+          <select class="form-select field-type" data-prop="type" aria-label="Column ${i + 1} type">
             ${SQL_TYPES.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
           <div class="field-constraints">
-            <label class="chk"><input type="checkbox" data-prop="pk" ${f.pk ? 'checked' : ''} /> PK</label>
-            <label class="chk" ${f.pk ? '' : 'disabled'}><input type="checkbox" data-prop="autoInc" ${f.autoInc ? 'checked' : ''} /> Auto</label>
-            <label class="chk"><input type="checkbox" data-prop="notNull" ${f.notNull ? 'checked' : ''} /> NN</label>
-            <label class="chk"><input type="checkbox" data-prop="unique" ${f.unique ? 'checked' : ''} /> UQ</label>
+            <label class="chk" title="Primary key"><input type="checkbox" data-prop="pk" ${f.pk ? 'checked' : ''} /> PK</label>
+            <label class="chk" title="Autoincrement (needs PK)" ${f.pk ? '' : 'disabled'}><input type="checkbox" data-prop="autoInc" ${f.autoInc ? 'checked' : ''} ${f.pk ? '' : 'disabled'} /> Auto</label>
+            <label class="chk" title="Not null"><input type="checkbox" data-prop="notNull" ${f.notNull ? 'checked' : ''} /> NN</label>
+            <label class="chk" title="Unique"><input type="checkbox" data-prop="unique" ${f.unique ? 'checked' : ''} /> UQ</label>
           </div>
-          <input type="text" class="form-input field-default" placeholder="default" value="${escapeHtml(f.defaultValue)}" data-prop="defaultValue" />
-          <button class="btn-remove-field" data-remove="${i}" title="Remove">✕</button>
+          <input type="text" class="form-input field-default" placeholder="default" aria-label="Column ${i + 1} default value" value="${escapeHtml(f.defaultValue)}" data-prop="defaultValue" />
+          <button class="btn-remove-field" data-remove="${i}" title="Remove column" aria-label="Remove column ${i + 1}">✕</button>
         </div>
       `).join('');
 
@@ -304,14 +354,15 @@ export const Sidebar = {
               fields[idx][prop] = input.checked;
               if (prop === 'pk' && !input.checked) fields[idx].autoInc = false;
               if (prop === 'pk' && input.checked) fields[idx].type = 'INTEGER';
+              // Only the PK box changes other controls, so only it needs a re-render.
+              // (Re-rendering on every keystroke used to wipe focus from the text fields.)
+              if (prop === 'pk') { renderFields(); row.parentElement?.querySelector(`[data-idx="${idx}"] [data-prop="pk"]`)?.focus(); return; }
             } else {
               fields[idx][prop] = input.value;
             }
-            renderFields();
             updatePreview();
           };
-          input.addEventListener('input', handler);
-          input.addEventListener('change', handler);
+          input.addEventListener(input.type === 'text' ? 'input' : 'change', handler);
         });
       });
 
@@ -322,12 +373,14 @@ export const Sidebar = {
       updatePreview();
     }
 
-    function buildSQL() {
-      const tableName = overlay.querySelector('#tbl-name').value.trim() || 'unnamed_table';
-      const colDefs = fields
+    // Quote identifiers that aren't plain words (spaces, dashes, reserved-looking names…)
+    const ident = (s) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) ? s : `"${s.replace(/"/g, '""')}"`;
+
+    function buildColDefs() {
+      return fields
         .filter(f => f.name.trim())
         .map(f => {
-          let def = `${f.name} ${f.type}`;
+          let def = `${ident(f.name.trim())} ${f.type}`;
           if (f.pk) {
             def += ' PRIMARY KEY';
             if (f.autoInc) def += ' AUTOINCREMENT';
@@ -337,7 +390,11 @@ export const Sidebar = {
           if (f.defaultValue) def += ` DEFAULT ${f.defaultValue}`;
           return def;
         });
-      return `CREATE TABLE ${tableName} (\n  ${colDefs.join(',\n  ')}\n);`;
+    }
+
+    function buildSQL() {
+      const tableName = overlay.querySelector('#tbl-name').value.trim() || 'unnamed_table';
+      return `CREATE TABLE ${ident(tableName)} (\n  ${buildColDefs().join(',\n  ')}\n);`;
     }
 
     function updatePreview() {
@@ -352,21 +409,9 @@ export const Sidebar = {
 
     overlay.querySelector('#btn-create').addEventListener('click', async () => {
       const tableName = overlay.querySelector('#tbl-name').value.trim();
-      if (!tableName) { alert('Please enter a table name.'); return; }
-      const validFields = fields.filter(f => f.name.trim());
-      if (validFields.length === 0) { alert('Please add at least one column.'); return; }
-
-      const colDefs = validFields.map(f => {
-        let def = `${f.name} ${f.type}`;
-        if (f.pk) {
-          def += ' PRIMARY KEY';
-          if (f.autoInc) def += ' AUTOINCREMENT';
-        }
-        if (f.notNull && !f.pk) def += ' NOT NULL';
-        if (f.unique) def += ' UNIQUE';
-        if (f.defaultValue) def += ` DEFAULT ${f.defaultValue}`;
-        return def;
-      });
+      if (!tableName) { await alertDialog('Missing table name', 'Please enter a table name.'); return; }
+      const colDefs = buildColDefs();
+      if (colDefs.length === 0) { await alertDialog('No columns', 'Please add at least one column.'); return; }
 
       const db = store.state.databases.find(d => d.id === dbId);
       if (!db) return;
@@ -375,12 +420,12 @@ export const Sidebar = {
         const dbInstance = await loadDatabase(db);
         dbInstance.run(`CREATE TABLE "${tableName.replace(/"/g, '""')}" (${colDefs.join(', ')})`);
         await persistDatabase(db, dbInstance);
-        store.state.tables = getTables(dbInstance);
-        store.save();
         overlay.remove();
-        this.render();
+        // Select the database the table was added to. (Previously its tables were shown
+        // under whichever database happened to be open when "+" was clicked on another one.)
+        await this.selectDatabase(dbId);
       } catch (e) {
-        alert(`Error: ${e.message}`);
+        await alertDialog('Could not create table', e.message);
       }
     });
 

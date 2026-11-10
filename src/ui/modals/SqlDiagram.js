@@ -66,7 +66,7 @@ export async function open() {
             </label>
             <span class="toolbar-sep">|</span>
             <label class="diagram-active-table-label" title="Highlight active table and its relationship lines">
-              <span class="active-dot" style="color: #f59e0b;">●</span>
+              <span class="active-dot" style="color: var(--warning);">●</span>
               <span>Active Table:</span>
               <select id="select-active-table" class="diagram-table-select">
                 <option value="">(None)</option>
@@ -584,7 +584,8 @@ function highlightActiveTableEdges(svg, activeTableName, knownTables) {
   if (!activeTableName) return;
 
   const target = activeTableName.toLowerCase();
-  const activeColor = '#f59e0b'; // Amber / Gold highlight color
+  // Amber highlight from the theme (--warning), darker in light mode so it keeps 3:1 contrast
+  const activeColor = getComputedStyle(document.documentElement).getPropertyValue('--warning').trim() || '#f59e0b';
 
   // 1. Highlight connected relationship lines
   const edgePaths = svg.querySelectorAll('path[data-id], path.relationshipLine, .edgePaths path');
