@@ -163,12 +163,13 @@ export const Sidebar = {
     if (!name) return;
     try {
       await createDatabase(name);
+      const last = store.state.databases[store.state.databases.length - 1];
+      if (last) await this.selectDatabase(last.id);
+      this.render();
     } catch (e) {
       console.error('Create DB failed:', e);
+      alert(`Failed to create database: ${e.message}`);
     }
-    this.render();
-    const last = store.state.databases[store.state.databases.length - 1];
-    if (last) await this.selectDatabase(last.id);
   },
 
   confirmDeleteDatabase(id) {
@@ -222,7 +223,6 @@ export const Sidebar = {
   async loadSample() {
     const { loadSampleData } = await import('../../db/sample-datasets.js');
     await loadSampleData();
-    this.render();
     const last = store.state.databases[store.state.databases.length - 1];
     if (last) await this.selectDatabase(last.id);
   },
