@@ -115,6 +115,9 @@ export function createApp(root) {
                   </span>
                 </div>
                 <div id="editor-container" class="editor-container"></div>
+                <div class="editor-footer">
+                  <button class="editor-run-btn" id="btn-run-bottom" title="Run Query (Ctrl+Enter)">⚡ Run</button>
+                </div>
               </div>
             </main>
           </div>
@@ -157,6 +160,7 @@ export function createApp(root) {
 
       // Header buttons
       document.getElementById('btn-run').addEventListener('click', () => Editor.run());
+      document.getElementById('btn-run-bottom').addEventListener('click', () => Editor.run());
       document.getElementById('btn-format').addEventListener('click', () => Editor.format());
       document.getElementById('btn-clear-output').addEventListener('click', () => Output.clear());
       document.getElementById('btn-clear-editor').addEventListener('click', () => Editor.clear());

@@ -3,6 +3,7 @@ import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { sql, SQLite } from '@codemirror/lang-sql';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { store } from '../../state/store.js';
 import { Output } from './Output.js';
@@ -17,7 +18,11 @@ function buildExtensions(theme) {
     lineNumbers(),
     history(),
     sql({ dialect: SQLite }),
+    // Auto-close ( [ { ' " ` (pairs come from the SQL language data).
+    // Typing the closer steps over it; Backspace between a pair removes both.
+    closeBrackets(),
     keymap.of([
+      ...closeBracketsKeymap,
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,

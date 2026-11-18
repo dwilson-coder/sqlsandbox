@@ -30,6 +30,7 @@ export async function open() {
         <div class="diagram-tabs" role="tablist">
           <button class="diagram-tab active" data-tab="visual" role="tab" aria-selected="true">Visual Diagram</button>
           <button class="diagram-tab" data-tab="cards" role="tab" aria-selected="false">Table Cards</button>
+          <button class="diagram-tab" data-tab="map" role="tab" aria-selected="false">Map</button>
           <button class="diagram-tab" data-tab="code" role="tab" aria-selected="false">Mermaid Code</button>
         </div>
         <div class="diagram-header-actions">
@@ -84,7 +85,17 @@ export async function open() {
           <div id="cards-container" class="schema-cards-grid"></div>
         </div>
 
-        <!-- Tab 3: Raw Mermaid Code -->
+        <!-- Tab 3: Mind map of the database (click a node to open / close it) -->
+        <div id="tab-map" class="tab-pane" style="display: none;">
+          <div class="diagram-toolbar">
+            <button class="zoom-btn" id="btn-map-expand" title="Open every table">Expand all</button>
+            <button class="zoom-btn" id="btn-map-collapse" title="Close every table">Collapse all</button>
+            <span class="diagram-tip">Click the database or a table to open / close it</span>
+          </div>
+          <div id="map-container" class="mindmap-container"></div>
+        </div>
+
+        <!-- Tab 4: Raw Mermaid Code -->
         <div id="tab-code" class="tab-pane" style="display: none;">
           <div class="code-tab-header">
             <span>Directly pasteable into Mermaid Live Editor, Obsidian, GitHub Markdown, and Notion:</span>
@@ -349,6 +360,7 @@ export async function open() {
       const targetTab = tab.dataset.tab;
       overlay.querySelector('#tab-visual').style.display = targetTab === 'visual' ? 'flex' : 'none';
       overlay.querySelector('#tab-cards').style.display = targetTab === 'cards' ? 'block' : 'none';
+      overlay.querySelector('#tab-map').style.display = targetTab === 'map' ? 'flex' : 'none';
       overlay.querySelector('#tab-code').style.display = targetTab === 'code' ? 'block' : 'none';
 
       if (targetTab === 'visual') {
@@ -519,6 +531,12 @@ export async function open() {
     renderTableCards(cardsContainer, schema, dbName);
     updateTableCardsHighlight(activeTable);
 
+    // Populate the mind map
+    const mapContainer = overlay.querySelector('#map-container');
+    renderMindMap(mapContainer, schema, dbName);
+    overlay.querySelector('#btn-map-expand').addEventListener('click', () => setAllMapBranches(mapContainer, true));
+    overlay.querySelector('#btn-map-collapse').addEventListener('click', () => setAllMapBranches(mapContainer, false));
+
     // Initial render
     await renderMermaid();
   } catch (err) {
@@ -648,6 +666,10 @@ function highlightActiveTableEdges(svg, activeTableName, knownTables) {
 }
 
 function updateTableCardsHighlight(activeTableName) {
+  document.querySelectorAll('.mm-node-table').forEach(node => {
+    node.classList.toggle('is-active-table',
+      !!activeTableName && node.dataset.tableName?.toLowerCase() === activeTableName.toLowerCase());
+  });
   const cards = document.querySelectorAll('.schema-card');
   cards.forEach(card => {
     const isCurrent = card.dataset.tableName?.toLowerCase() === activeTableName?.toLowerCase();
@@ -730,4 +752,78 @@ function renderTableCards(container, schema, dbName) {
   `).join('');
 
   container.innerHTML = dbCardHtml + tablesHtml;
+}
+
+/**
+ * Mind map: database → tables → columns, laid out left to right.
+ * Each branch opens / closes with an animated grid-track transition (see .mm-collapse in main.css).
+ */
+function renderMindMap(container, schema, dbName) {
+  if (!container) return;
+
+  const columnNode = (col) => `
+    <div class="mm-branch">
+      <div class="mm-node mm-node-col ${col.pk ? 'is-pk' : ''} ${col.fk ? 'is-fk' : ''}">
+        ${col.pk ? '<span class="badge-pk" title="Primary Key">PK</span>' : ''}
+        ${col.fk ? '<span class="badge-fk" title="Foreign Key">FK</span>' : ''}
+        ${col.unique && !col.pk ? '<span class="badge-uk" title="Unique">UK</span>' : ''}
+        <span class="col-name">${escapeHtml(col.name)}</span>
+        <span class="col-type">${escapeHtml(col.type)}</span>
+        ${col.references ? `<span class="col-fk-ref" title="References ${escapeHtml(col.references.table)}.${escapeHtml(col.references.column)}">→ ${escapeHtml(col.references.table)}</span>` : ''}
+      </div>
+    </div>`;
+
+  const tableNode = (table) => `
+    <div class="mm-branch">
+      <button type="button" class="mm-node mm-node-table ${table.isJunction ? 'is-junction' : ''}"
+              aria-expanded="false" data-table-name="${escapeHtml(table.name)}"
+              title="Show / hide the columns of ${escapeHtml(table.name)}">
+        <span class="mm-chevron" aria-hidden="true">▸</span>
+        <span aria-hidden="true">📋</span>
+        <strong>${escapeHtml(table.name)}</strong>
+        <span class="badge count">${table.columns.length} col${table.columns.length === 1 ? '' : 's'}</span>
+      </button>
+      <div class="mm-collapse">
+        <div class="mm-collapse-inner">
+          <div class="mm-children">${table.columns.map(columnNode).join('')}</div>
+        </div>
+      </div>
+    </div>`;
+
+  container.innerHTML = `
+    <div class="mindmap">
+      <div class="mm-branch mm-root">
+        <button type="button" class="mm-node mm-node-db" aria-expanded="true" title="Show / hide tables">
+          <span class="mm-chevron" aria-hidden="true">▸</span>
+          <span aria-hidden="true">🗄️</span>
+          <strong>${escapeHtml(dbName)}</strong>
+          <span class="badge count">${schema.tables.length} table${schema.tables.length === 1 ? '' : 's'}</span>
+        </button>
+        <div class="mm-collapse is-open">
+          <div class="mm-collapse-inner">
+            <div class="mm-children">${schema.tables.map(tableNode).join('')}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  container.addEventListener('click', (e) => {
+    const node = e.target.closest('button.mm-node');
+    if (!node || !container.contains(node)) return;
+    setMapBranch(node, node.getAttribute('aria-expanded') !== 'true');
+  });
+}
+
+function setMapBranch(nodeBtn, open) {
+  const collapse = nodeBtn.nextElementSibling;
+  if (!collapse || !collapse.classList.contains('mm-collapse')) return;
+  nodeBtn.setAttribute('aria-expanded', String(open));
+  collapse.classList.toggle('is-open', open);
+}
+
+function setAllMapBranches(container, open) {
+  if (!container) return;
+  const dbNode = container.querySelector('.mm-node-db');
+  if (open && dbNode) setMapBranch(dbNode, true);
+  container.querySelectorAll('.mm-node-table').forEach(btn => setMapBranch(btn, open));
 }
