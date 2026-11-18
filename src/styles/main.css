@@ -808,7 +808,7 @@ body {
 
 /* === EDITOR FOOTER (second Run button under the SQL editor) === */
 .editor-footer {
-  display: flex; justify-content: flex-end; align-items: center;
+  display: flex; justify-content: flex-start; align-items: center;
   padding: 6px 12px; flex-shrink: 0;
   background: var(--panel-header-bg); border-top: 1px solid var(--border);
 }
